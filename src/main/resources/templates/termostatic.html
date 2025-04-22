@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <title>Calculator for Isoterm Process</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- Подключаем Chart.js -->
+  <style>
+    /* Стили для центрирования графика */
+    #chartContainer {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 40vh; /* Высота контейнера - 40% от высоты экрана */
+    }
+    #pressureChart {
+      width: 500px; /* Ширина графика */
+      height: 500px; /* Высота графика */
+    }
+    /* Стили для шарика */
+    #chartGradientContainer {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 40vh;
+      gap: 20px;
+      position: relative;
+    }
+
+    #gradientWrapper {
+      position: relative;
+      width: 50px;
+      height: 350px;
+    }
+
+    #gradientBox {
+      width: 30px;
+      height: 100%;
+      background: linear-gradient(to bottom, rgba(255,50,0), rgba(0,50,255));
+      border-radius: 5px;
+      position: absolute;
+      left: 10px;
+      top: 0;
+    }
+
+    #ball {
+      background-color: rgba(255, 0, 0, 0.5);
+      border-radius: 50%;
+      position: absolute;
+      top: 55%; /* Центр по вертикали */
+      left: -270px; /* По центру градиента */
+      transform: translate(-50%, -50%);
+      transition: width 0.2s, height 0.2s, background-color 0.2s;
+      display: none;
+      z-index: 2;
+    }
+
+  </style>
+</head>
+<body>
+<h1>Calculate Pressure</h1>
+<form id="pressureForm">
+  <label for="Temperature">Temperature (°K):</label>
+  <input type="number" min="0" id="Temperature" name="Temperature" step="0.01" required><br><br>
+
+  <label for="Period">Period(1/m³):</label>
+  <input type="number" min="0.01" id="Period" name="Period" step="0.01" required><br><br>
+
+  <label for="MaxVolume">Max Volume(m³):</label>
+  <input type="number" min="0.01" max = "400" id="MaxVolume" name="MaxVolume" step="0.01" required><br><br>
+
+  <label for="Amount_substans">Amount of Substance(mole):</label>
+  <input type="number" id="Amount_substans" name="Amount_substans" step="0.01" required><br><br>
+
+  <button type="submit">Calculate</button>
+</form>
+
+<div id="result">
+  <h2 id="Pressure"></h2>
+</div>
+
+<div id="chartGradientContainer">
+  <div id="gradientWrapper">
+    <div id="ball"></div> <!-- Шарик в контейнере -->
+    <div id="gradientBox"></div>
+  </div>
+  <canvas id="pressureChart"></canvas>
+</div>
+
+
+<script>
+  $(document).ready(function () {
+    const ctx = document.getElementById('pressureChart').getContext('2d');
+    const pressureData = {
+      labels: [],
+      datasets: [{
+        label: 'Pressure',
+        data: [],
+        borderColor: 'rgba(75, 192, 192, 1)',
+        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+        borderWidth: 1
+      }]
+    };
+
+    const pressureChart = new Chart(ctx, {
+      type: 'line',
+      data: pressureData,
+      options: {
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: 'Pressure'
+            }
+          },
+          x: {
+            title: {
+              display: true,
+              text: 'Volume'
+            }
+          }
+        }
+      }
+    });
+
+    $("#pressureForm").on("submit", function (event) {
+      event.preventDefault();
+
+      const Temperature = $("#Temperature").val();
+      const Amount_substans = $("#Amount_substans").val();
+      const period = parseFloat($("#Period").val());
+      const maxVolume = parseFloat($("#MaxVolume").val());
+
+      pressureData.labels = [];
+      pressureData.datasets[0].data = [];
+
+      let volume = 0.0;
+      const interval = setInterval(function() {
+        if (volume > maxVolume) {
+          clearInterval(interval);
+          return;
+        }
+
+        $.ajax({
+          url: "/termostatic",
+          type: "POST",
+          dataType:"json",
+          data: {
+            Temperature,
+            Volume: volume,
+            Amount_substans
+          },
+          success(response) {
+            pressureData.labels.push(volume % 10);
+            pressureData.datasets[0].data.push(response.Pressure);
+            pressureChart.update();
+
+            // Изменяем размер шарика в зависимости от объема
+            updateBall(volume % 10, response.Pressure);
+          },
+          error(xhr) {
+            console.error("Error:", xhr.responseText);
+          }
+        });
+
+        volume += period;
+      }, period);
+    });
+
+    function getPressureColorByY(yPosition) {
+      const wrapper = $('#gradientWrapper');
+      const height = wrapper.height();
+
+      // Нормализуем Y в диапазон [0, 1], где 0 — верх, 1 — низ
+      let normalized = yPosition / height;
+      normalized = Math.min(1, Math.max(0, normalized)); // Защита от выхода за границы
+
+      const r = Math.round(255 * (1 - normalized)); // Красный вверху
+      const g = 50;
+      const b = Math.round(255 * normalized);       // Синий внизу
+
+      return `rgb(${r},${g},${b})`;
+    }
+
+    function updateBall(volume, pressure) {
+      let ballSize = volume === 0 ? 1 : Math.round(Math.sqrt(volume) % 10);
+      ballSize = Math.max(ballSize, 1) * 25; // Базовый масштаб
+
+      const wrapperHeight = $('#gradientWrapper').height();
+      const maxPressure = 100; // Задаем максимально возможное давление
+      let normalizedPressure = pressure / maxPressure;
+      normalizedPressure = Math.min(1, Math.max(0, normalizedPressure));
+
+      const yPos = normalizedPressure * wrapperHeight;
+
+      const color = getPressureColorByY(yPos);
+
+      $('#ball').css({
+        width: ballSize  + 'px',
+        height: ballSize  + 'px',
+        backgroundColor: color,
+        display: 'block'
+      });
+    }
+
+
+
+
+    $('#pressureChart').on('mousemove', function(event) {
+      const canvasPosition = $(this).offset();
+      const mouseX = event.pageX - canvasPosition.left;
+
+      const chartArea = pressureChart.chartArea;
+
+      if (mouseX >= chartArea.left && mouseX <= chartArea.right) {
+        const xValue = pressureChart.scales.x.getValueForPixel(mouseX);
+
+        if (pressureData.labels.length > 0 && xValue >= Math.min(...pressureData.labels) && xValue <= Math.max(...pressureData.labels)) {
+          const index = pressureData.labels.findIndex(label => label >= xValue);
+
+          if (index !== -1) {
+            const correspondingPressure = pressureData.datasets[0].data[index];
+
+            // Изменяем размер и показываем шарик в зависимости от объема
+            updateBall(Math.round(xValue), correspondingPressure);
+          }
+        } else {
+          $('#ball').hide(); // Скрываем шарик если курсор вне диапазона объемов
+        }
+      } else {
+        $('#ball').hide(); // Скрываем шарик если курсор вне области графика
+      }
+    });
+
+    $('#pressureChart').on('mouseleave', function() {
+      $('#ball').hide(); // Скрываем шарик при выходе курсора за пределы графика
+    });
+  });
+</script>
+</body>
+</html>
