@@ -10,12 +10,14 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      height: 40vh; /* Высота контейнера - 40% от высоты экрана */
+      height: 100vh; /* Высота контейнера - 100% от высоты экрана */
     }
+
     #pressureChart {
-      width: 500px; /* Ширина графика */
-      height: 500px; /* Высота графика */
+      width: 50%; /* Ширина графика 50% от ширины экрана */
+      height: 50vh; /* Высота графика 50% от высоты экрана */
     }
+
     /* Стили для шарика */
     #chartGradientContainer {
       display: flex;
@@ -57,22 +59,23 @@
   </style>
 </head>
 <body>
-<h1>Calculate Pressure</h1>
+<h1>Расчёт давления в изотермическом процессе</h1>
 <form id="pressureForm">
-  <label for="Temperature">Temperature (°K):</label>
-  <input type="number" min="0" id="Temperature" name="Temperature" step="0.01" required><br><br>
+  <label for="Temperature">Температура (°K):</label>
+  <input type="number" min="0" id="Temperature" name="Temperature" step="0.01" required value="273"><br><br>
 
-  <label for="Period">Period(1/m³):</label>
-  <input type="number" min="0.01" id="Period" name="Period" step="0.01" required><br><br>
+  <label for="Period">Шаг графика (1/m³):</label>
+  <input type="number" min="0.01" id="Period" name="Period" step="0.01" required value="1"><br><br>
 
-  <label for="MaxVolume">Max Volume(m³):</label>
-  <input type="number" min="0.01" max = "400" id="MaxVolume" name="MaxVolume" step="0.01" required><br><br>
+  <label for="MaxVolume">Наибольший объём (m³):</label>
+  <input type="number" min="0.01" id="MaxVolume" name="MaxVolume" step="0.01" required value="100"><br><br>
 
-  <label for="Amount_substans">Amount of Substance(mole):</label>
-  <input type="number" id="Amount_substans" name="Amount_substans" step="0.01" required><br><br>
+  <label for="Amount_substans">Количество вещества (моль):</label>
+  <input type="number" id="Amount_substans" name="Amount_substans" step="0.01" required value="10"><br><br>
 
-  <button type="submit">Calculate</button>
+  <button type="submit">Расчёт</button>
 </form>
+
 
 <div id="result">
   <h2 id="Pressure"></h2>
@@ -80,12 +83,26 @@
 
 <div id="chartGradientContainer">
   <div id="gradientWrapper">
-    <div id="ball"></div> <!-- Шарик в контейнере -->
+    <div id="ball">
+      <div id="fixedInfo" style="
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translate(-50%, 5px);
+        text-align: center;
+        font-weight: bold;
+        white-space: nowrap;
+        display: none;
+        font-size: 28px;
+        color: #000;
+        ">p = ..., v = ...
+      </div>
+    </div>
+
     <div id="gradientBox"></div>
   </div>
   <canvas id="pressureChart"></canvas>
 </div>
-
 
 <script>
   $(document).ready(function () {
@@ -93,7 +110,7 @@
     const pressureData = {
       labels: [],
       datasets: [{
-        label: 'Pressure',
+        label: 'График',
         data: [],
         borderColor: 'rgba(75, 192, 192, 1)',
         backgroundColor: 'rgba(75, 192, 192, 0.2)',
@@ -110,13 +127,13 @@
             beginAtZero: true,
             title: {
               display: true,
-              text: 'Pressure'
+              text: 'Давление, Па'
             }
           },
           x: {
             title: {
               display: true,
-              text: 'Volume'
+              text: 'Объём, m³'
             }
           }
         }
@@ -125,54 +142,49 @@
 
     $("#pressureForm").on("submit", function (event) {
       event.preventDefault();
+      const Temperature = parseFloat($("#Temperature").val());
+      const Period = parseFloat($("#Period").val());
+      const MaxVolume = parseFloat($("#MaxVolume").val());
+      const Amount_substans = parseFloat($("#Amount_substans").val());
 
-      const Temperature = $("#Temperature").val();
-      const Amount_substans = $("#Amount_substans").val();
-      const period = parseFloat($("#Period").val());
-      const maxVolume = parseFloat($("#MaxVolume").val());
+      $.ajax({
+        url: "/termostatic",
+        type: "POST",
+        dataType: "json",
+        data: {
+          Temperature,
+          Period,
+          MaxVolume,
+          Amount_substans
+        },
+        success(response) {
+          const pressures = response.Pressures;
 
-      pressureData.labels = [];
-      pressureData.datasets[0].data = [];
+          // Обновляем ось X и данные графика
+          pressureData.labels = [];
+          pressureData.datasets[0].data = [];
 
-      let volume = 0.0;
-      const interval = setInterval(function() {
-        if (volume > maxVolume) {
-          clearInterval(interval);
-          return;
-        }
-
-        $.ajax({
-          url: "/termostatic",
-          type: "POST",
-          dataType:"json",
-          data: {
-            Temperature,
-            Volume: volume,
-            Amount_substans
-          },
-          success(response) {
-            pressureData.labels.push(volume % 10);
-            pressureData.datasets[0].data.push(response.Pressure);
-            pressureChart.update();
-
-            // Изменяем размер шарика в зависимости от объема
-            updateBall(volume % 10, response.Pressure);
-          },
-          error(xhr) {
-            console.error("Error:", xhr.responseText);
+          let volume = Period;
+          for (let i = 0; i < pressures.length; i++) {
+            pressureData.labels.push(volume.toFixed(2));
+            pressureData.datasets[0].data.push(pressures[i]);
+            volume += Period;
           }
-        });
 
-        volume += period;
-      }, period);
+          pressureChart.update();
+        },
+        error(xhr) {
+          console.error("Error:", xhr.responseText);
+        }
+      });
     });
 
+
     function getPressureColorByY(yPosition) {
-      const wrapper = $('#gradientWrapper');
-      const height = wrapper.height();
+      const chartHeight = $('#pressureChart').height();
 
       // Нормализуем Y в диапазон [0, 1], где 0 — верх, 1 — низ
-      let normalized = yPosition / height;
+      let normalized = yPosition / chartHeight;
       normalized = Math.min(1, Math.max(0, normalized)); // Защита от выхода за границы
 
       const r = Math.round(255 * (1 - normalized)); // Красный вверху
@@ -183,57 +195,109 @@
     }
 
     function updateBall(volume, pressure) {
-      let ballSize = volume === 0 ? 1 : Math.round(Math.sqrt(volume) % 10);
-      ballSize = Math.max(ballSize, 1) * 25; // Базовый масштаб
+      ballSize = Math.max(volume, 1) * 25; // Базовый масштаб
 
-      const wrapperHeight = $('#gradientWrapper').height();
-      const maxPressure = 100; // Задаем максимально возможное давление
-      let normalizedPressure = pressure / maxPressure;
-      normalizedPressure = Math.min(1, Math.max(0, normalizedPressure));
-
-      const yPos = normalizedPressure * wrapperHeight;
-
-      const color = getPressureColorByY(yPos);
+      const color = getPressureColorByY(pressure);
 
       $('#ball').css({
-        width: ballSize  + 'px',
-        height: ballSize  + 'px',
         backgroundColor: color,
         display: 'block'
       });
     }
 
+    function updateBallSizeBasedOnX(mouseX) {
+      const chartWidth = $('#pressureChart').width();
+      // Нормализуем X в диапазон [0, 1], где 0 — слева, 1 — справа
+      let normalized = mouseX / chartWidth;
+      normalized = Math.min(1, Math.max(0, normalized)); // Защита от выхода за границы
 
+      const ballSize = Math.round(normalized * 50); // Размер шарика будет изменяться от 1px до 50px
 
+      $('#ball').css({
+        width: ballSize * 10 + 'px',
+        height: ballSize * 10 + 'px'
+      });
+    }
 
-    $('#pressureChart').on('mousemove', function(event) {
+    let ballFixed = false; // Флаг фиксированного состояния
+
+    $('#pressureChart').on('mousemove', function (event) {
+      if (ballFixed) return; // если зафиксирован — не обновляем
+
       const canvasPosition = $(this).offset();
+      const mouseY = event.pageY - canvasPosition.top;
       const mouseX = event.pageX - canvasPosition.left;
 
       const chartArea = pressureChart.chartArea;
 
-      if (mouseX >= chartArea.left && mouseX <= chartArea.right) {
-        const xValue = pressureChart.scales.x.getValueForPixel(mouseX);
+      // Проверка, находится ли мышь внутри области графика
+      if (mouseY >= chartArea.top && mouseY <= chartArea.bottom &&
+              mouseX >= chartArea.left && mouseX <= chartArea.right) {
 
-        if (pressureData.labels.length > 0 && xValue >= Math.min(...pressureData.labels) && xValue <= Math.max(...pressureData.labels)) {
-          const index = pressureData.labels.findIndex(label => label >= xValue);
+        const color = getPressureColorByY(mouseY);
+        $('#ball').css({
+          backgroundColor: color,
+          display: 'block',
+        });
 
-          if (index !== -1) {
-            const correspondingPressure = pressureData.datasets[0].data[index];
-
-            // Изменяем размер и показываем шарик в зависимости от объема
-            updateBall(Math.round(xValue), correspondingPressure);
-          }
-        } else {
-          $('#ball').hide(); // Скрываем шарик если курсор вне диапазона объемов
-        }
+        updateBallSizeBasedOnX(mouseX);
       } else {
-        $('#ball').hide(); // Скрываем шарик если курсор вне области графика
+        $('#ball').hide();
       }
     });
 
-    $('#pressureChart').on('mouseleave', function() {
-      $('#ball').hide(); // Скрываем шарик при выходе курсора за пределы графика
+    $('#pressureChart').on('mouseleave', function () {
+      if (!ballFixed) {
+        $('#ball').hide();
+      }
+    });
+
+    $('#pressureChart').on('click', function (event) {
+      const canvasPosition = $(this).offset();
+      const clickX = event.pageX - canvasPosition.left;
+      const clickY = event.pageY - canvasPosition.top;
+
+      const chartArea = pressureChart.chartArea;
+      const xScale = pressureChart.scales.x;
+      const yScale = pressureChart.scales.y;
+
+      const volumeClicked = xScale.getValueForPixel(clickX);
+      const pressureClicked = yScale.getValueForPixel(clickY);
+
+      let closestIndex = 0;
+      let minDiff = Infinity;
+
+      pressureData.labels.forEach((v, i) => {
+        const diff = Math.abs(parseFloat(v) - volumeClicked);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestIndex = i;
+        }
+      });
+
+      const fixedVolume = parseFloat(pressureData.labels[closestIndex]);
+      const fixedPressure = pressureData.datasets[0].data[closestIndex];
+
+      const color = getPressureColorByY(yScale.getPixelForValue(fixedPressure));
+      const ballSize = Math.round(Math.min(1, Math.max(clickX / xScale))) * 50;
+      $('#ball').css({
+        backgroundColor: color,
+        width: ballSize * 10 + 'px',
+        width: ballSize * 10 + 'px',
+        height: ballSize * 10 + 'px'
+      });
+
+      ballFixed = true;
+      $('#fixedInfo').html(`p = ${fixedPressure.toFixed(2)} Па, v = ${fixedVolume.toFixed(2)} м^3`);
+      $('#fixedInfo').css('display', 'block');
+
+    });
+
+// Сброс фиксации двойным кликом
+    $('#pressureChart').on('dblclick', function () {
+      ballFixed = false;
+      // $('#ball').hide();
+      $('#fixedInfo').hide();
     });
   });
 </script>
