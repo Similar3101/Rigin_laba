@@ -85,19 +85,35 @@
   <div id="gradientWrapper">
     <div id="ball">
       <div id="fixedInfo" style="
-        position: absolute;
-        top: 100%;
-        left: 50%;
-        transform: translate(-50%, 5px);
-        text-align: center;
-        font-weight: bold;
-        white-space: nowrap;
-        display: none;
-        font-size: 28px;
-        color: #000;
-        ">p = ..., v = ...
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translate(-50%, 5px);
+    text-align: center;
+    font-weight: bold;
+    white-space: nowrap;
+    display: none;
+    font-size: 20px;
+    color: #000;
+  ">p = ..., v = ...
+      </div>
+
+      <div id="hintText" style="
+    position: absolute;
+    top: 135%;
+    left: 50%;
+    transform: translate(-50%, 5px);
+    text-align: center;
+    white-space: nowrap;
+    font-size: 14px;
+    color: #444;
+    display: none;
+    font-style: italic;
+  ">
+        Двойной клик для снятия фиксации
       </div>
     </div>
+
 
     <div id="gradientBox"></div>
   </div>
@@ -253,6 +269,7 @@
     });
 
     $('#pressureChart').on('click', function (event) {
+      if (ballFixed) return;
       const canvasPosition = $(this).offset();
       const clickX = event.pageX - canvasPosition.left;
       const clickY = event.pageY - canvasPosition.top;
@@ -290,14 +307,16 @@
       ballFixed = true;
       $('#fixedInfo').html(`p = ${fixedPressure.toFixed(2)} Па, v = ${fixedVolume.toFixed(2)} м^3`);
       $('#fixedInfo').css('display', 'block');
+      $('#hintText').css('display', 'block');
+
 
     });
 
 // Сброс фиксации двойным кликом
     $('#pressureChart').on('dblclick', function () {
       ballFixed = false;
-      // $('#ball').hide();
       $('#fixedInfo').hide();
+      $('#hintText').hide();
     });
   });
 </script>
